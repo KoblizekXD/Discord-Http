@@ -2,8 +2,8 @@ package com.discord.http;
 
 import com.discord.http.ws.HandshakerV13;
 import com.discord.http.ws.WebSocketHandler;
+import com.discord.util.Payload;
 import io.netty.bootstrap.Bootstrap;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
@@ -65,28 +65,18 @@ public final class Gateway {
                         }
                     });
 
-            Channel ch = b.connect(uri.getHost(), 443).sync().channel();
+            Channel channel = b.connect(uri.getHost(), 443).sync().channel();
             handler.handshakeFuture().sync();
-
-            BufferedReader console = new BufferedReader(new InputStreamReader(System.in));
             while (true) {
-                String msg = console.readLine();
-                if (msg == null) {
+                if (!Payload.isEmpty()) {
+                    for (String requestFlush : Payload.requestFlush()) {
+                        WebSocketFrame frame = new TextWebSocketFrame(requestFlush);
+                        channel.writeAndFlush(frame);
+                    }
+                } else if (Payload.shouldClose()) {
                     break;
-                } else if ("bye".equalsIgnoreCase(msg)) {
-                    ch.writeAndFlush(new CloseWebSocketFrame());
-                    ch.closeFuture().sync();
-                    break;
-                } else if ("ping".equalsIgnoreCase(msg)) {
-                    WebSocketFrame frame = new PingWebSocketFrame(Unpooled.wrappedBuffer(new byte[] { 8, 1, 8, 1 }));
-                    ch.writeAndFlush(frame);
-                } else {
-                    WebSocketFrame frame = new TextWebSocketFrame(msg);
-                    ch.writeAndFlush(frame);
                 }
             }
-        } catch (IOException e) {
-            logger.error("Unknown I/O exception occurred (BufferedReader#readLine), disconnecting...");
         } catch (InterruptedException e) {
             logger.error("Synchronization has been interrupted, disconnecting...");
             Thread.currentThread().interrupt();
